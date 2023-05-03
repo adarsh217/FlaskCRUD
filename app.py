@@ -1,73 +1,74 @@
-from flask import Flask, jsonify, request
+from flask import Flask
+from flask_restful import Resource, Api, reqparse
 from pymongo import MongoClient
-from bson import ObjectId
+from bson.objectid import ObjectId
 
-# Create Flask application instance
 app = Flask(__name__)
+api = Api(app)
 
-# Set MongoDB URI and database name in Flask app configuration
-app.config['MONGO_URI'] = 'mongodb://localhost:27017/db'
-app.config['MONGO_DBNAME'] = 'db'
+client = MongoClient('mongodb://localhost:27017/')
+db = client['db']
+collection = db['users']
 
-# Create PyMongo client and database instance
-client = MongoClient(app.config['MONGO_URI'])
-db = client[app.config['MONGO_DBNAME']]
+class User(Resource):
+    def get(self, user_id=None):
+        if user_id:
+            user = collection.find_one({"_id": ObjectId(user_id)})
+            if user:
+                user['_id'] = str(user['_id'])
+                return {"message": "User found", "data": user}, 200
+            else:
+                return {"message": "User not found"}, 404
+        else:
+            users = []
+            for user in collection.find():
+                user['_id'] = str(user['_id'])
+                users.append(user)
+            return {"message": "Users found", "data": users}, 200
 
-# Define User resource fields
-user_fields = ['name', 'email', 'password']
+    def post(self):
+        parser = reqparse.RequestParser()
+        parser.add_argument('name', type=str, required=True)
+        parser.add_argument('email', type=str, required=True)
+        parser.add_argument('password', type=str, required=True)
+        args = parser.parse_args()
 
-# Define endpoint for getting all users
-@app.route('/users', methods=['GET'])
-def get_users():
-    users = list(db.users.find())
-    for user in users:
-        user['_id'] = str(user['_id'])
-    return jsonify(users)
+        user = {"name": args['name'], "email": args['email'], "password": args['password']}
+        result = collection.insert_one(user)
 
-# Define endpoint for getting a user by ID
-@app.route('/users/<string:user_id>', methods=['GET'])
-def get_user(user_id):
-    user = db.users.find_one({'_id': ObjectId(user_id)})
-    if user:
-        user['_id'] = str(user['_id'])
-        return jsonify(user)
-    else:
-        return jsonify({'error': 'User not found'}), 404
+        user['_id'] = str(result.inserted_id)
+        return {"message": "User created", "data": user}, 201
 
-# Define endpoint for creating a new user
-@app.route('/users', methods=['POST'])
-def create_user():
-    user_data = request.get_json()
-    for field in user_fields:
-        if field not in user_data:
-            return jsonify({'error': f'Missing {field} field'}), 400
-    user_id = db.users.insert_one(user_data).inserted_id
-    return jsonify({'message': f'User created with ID: {str(user_id)}'}), 201
+    def put(self, user_id):
+        parser = reqparse.RequestParser()
+        parser.add_argument('name', type=str)
+        parser.add_argument('email', type=str)
+        parser.add_argument('password', type=str)
+        args = parser.parse_args()
 
-# Define endpoint for updating a user by ID
-@app.route('/users/<string:user_id>', methods=['PUT'])
-def update_user(user_id):
-    user_data = request.get_json()
-    if not user_data:
-        return jsonify({'error': 'No data provided to update'}), 400
-    for field in user_fields:
-        if field not in user_data:
-            return jsonify({'error': f'Missing {field} field'}), 400
-    result = db.users.update_one({'_id': ObjectId(user_id)}, {'$set': user_data})
-    if result.modified_count > 0:
-        return jsonify({'message': f'User with ID {user_id} updated'}), 200
-    else:
-        return jsonify({'error': 'User not found'}), 404
+        user = collection.find_one({"_id": ObjectId(user_id)})
+        if user:
+            updated_user = {}
+            for field in ['name', 'email', 'password']:
+                if args[field]:
+                    updated_user[field] = args[field]
+                else:
+                    updated_user[field] = user[field]
 
-# Define endpoint for deleting a user by ID
-@app.route('/users/<string:user_id>', methods=['DELETE'])
-def delete_user(user_id):
-    result = db.users.delete_one({'_id': ObjectId(user_id)})
-    if result.deleted_count > 0:
-        return jsonify({'message': f'User with ID {user_id} deleted'}), 200
-    else:
-        return jsonify({'error': 'User not found'}), 404
+            collection.update_one({"_id": ObjectId(user_id)}, {"$set": updated_user})
+            updated_user['_id'] = str(user_id)
+            return {"message": "User updated", "data": updated_user}, 200
+        else:
+            return {"message": "User not found"}, 404
 
-# Run Flask application
+    def delete(self, user_id):
+        result = collection.delete_one({"_id": ObjectId(user_id)})
+        if result.deleted_count:
+            return {"message": "User deleted"}, 204
+        else:
+            return {"message": "User not found"}, 404
+
+api.add_resource(User, '/users', '/users/<string:user_id>')
+
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0')
+    app.run(debug=True)
