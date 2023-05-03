@@ -50,8 +50,5 @@ api.add_resource(Users, '/users')
 api.add_resource(User, '/users/<user_id>')
 api.add_resource(UserTomorrow, '/users/<user_id>/<tomorrow>')
 
-api.add_resource(Users, '/users')
-api.add_resource(User, '/users/<user_id>')
-
 if __name__ == '__main__':
     app.run(debug=True)
