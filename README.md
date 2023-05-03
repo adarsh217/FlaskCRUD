@@ -27,7 +27,7 @@ This is a Flask application that performs CRUD (Create, Read, Update, Delete) op
 3. Install the required packages:
 
    ```
-   pip install flask pymongo
+   pip install -r requirements.txt
    ```
 
 4. Create a new MongoDB database and collection for the application.
